@@ -1,168 +1,242 @@
 "use client";
 
 import type {
-  StudentProfile,
-  CompanyProfile,
-  Offer,
-  Application,
-  Message,
+  GraduateProfile,
+  JobRecord,
+  Survey,
+  SurveyResponse,
+  AlumniEvent,
+  Notice,
+  EventAttendance,
+  EventMessage,
+  AttendanceStatus,
   Role,
-  ApplicationStatus,
 } from "./types";
 
-/* =============== Utils de LS =============== */
 function lsGet<T>(k: string, fb: T): T {
   if (typeof window === "undefined") return fb;
   try {
-    const v = localStorage.getItem(k);
+    const v = window.localStorage.getItem(k);
     return v ? (JSON.parse(v) as T) : fb;
   } catch {
     return fb;
   }
 }
+
 function lsSet<T>(k: string, v: T) {
-  if (typeof window !== "undefined") localStorage.setItem(k, JSON.stringify(v));
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(k, JSON.stringify(v));
 }
 
 function id(prefix: string) {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
 }
 
-/* =============== Claves =============== */
 const K = {
-  studentProfiles: "db_student_profiles",
-  companyProfiles: "db_company_profiles",
-  offers: "db_offers",
-  apps: "db_applications",
-  msgs: (appId: string) => `db_msgs_${appId}`,
-};
+  profiles: "db_graduate_profiles",
+  surveys: "db_surveys",
+  responses: "db_survey_responses",
+  events: "db_events",
+  notices: "db_notices",
+  attendance: "db_event_attendance",
+  messages: "db_event_messages",
+} as const;
 
-/* =========================================================
-   SEED: inyecta una oferta por defecto si no existe
-   - Empresa: emp-admin  (asegúrate de tener ese usuario en auth.ts)
-   - Solo se crea si no está presente (id estable SEED_ID)
-========================================================= */
-const SEED_ID = "offer_seed_untels_1";
+/* ================== PERFILES EGRESADOS ================== */
 
-function seedOffersOnce() {
-  if (typeof window === "undefined") return;
-  const current = lsGet<Offer[]>(K.offers, []);
-  const exists = current.some((o) => o.id === SEED_ID);
-  if (exists) return;
-
-  const seeded: Offer = {
-    id: SEED_ID,
-    titulo: "Practicante de Desarrollo Web — Feria UNTELS",
-    descripcion:
-      "Únete a nuestro equipo para apoyar el desarrollo de una plataforma web responsive (Next.js + Tailwind). " +
-      "Ideal para estudiantes que buscan su primera experiencia profesional: trabajo en equipo ágil, mentoría y despliegue continuo.",
-    modalidad: "practicas",
-    empresaUsername: "emp-admin", // ← usuario de empresa existente en auth.ts
-    creadaEn: Date.now() - 1000 * 60 * 60 * 24 * 3, // hace 3 días
-  };
-
-  lsSet(K.offers, [...current, seeded]);
-}
-// Ejecutar el seed en cuanto se importe el módulo (cliente)
-seedOffersOnce();
-
-/* =============== Perfiles =============== */
-export function saveStudentProfile(p: StudentProfile) {
-  const list = lsGet<StudentProfile[]>(K.studentProfiles, []);
-  const i = list.findIndex((x) => x.username.toLowerCase() === p.username.toLowerCase());
+export function upsertGraduateProfile(p: GraduateProfile): GraduateProfile {
+  const list = lsGet<GraduateProfile[]>(K.profiles, []);
+  const i = list.findIndex((x) => x.username === p.username);
   if (i >= 0) list[i] = p;
   else list.push(p);
-  lsSet(K.studentProfiles, list);
-}
-export function getStudentProfile(username: string): StudentProfile | null {
-  const list = lsGet<StudentProfile[]>(K.studentProfiles, []);
-  return list.find((x) => x.username.toLowerCase() === username.toLowerCase()) ?? null;
+  lsSet(K.profiles, list);
+  return p;
 }
 
-export function saveCompanyProfile(p: CompanyProfile) {
-  const list = lsGet<CompanyProfile[]>(K.companyProfiles, []);
-  const i = list.findIndex((x) => x.username.toLowerCase() === p.username.toLowerCase());
-  if (i >= 0) list[i] = p;
-  else list.push(p);
-  lsSet(K.companyProfiles, list);
-}
-export function getCompanyProfile(username: string): CompanyProfile | null {
-  const list = lsGet<CompanyProfile[]>(K.companyProfiles, []);
-  return list.find((x) => x.username.toLowerCase() === username.toLowerCase()) ?? null;
-}
-
-/* =============== Ofertas =============== */
-export function listOffers(): Offer[] {
-  // Nota: seed ya corrió al importar
-  return lsGet<Offer[]>(K.offers, []).sort((a, b) => b.creadaEn - a.creadaEn);
-}
-export function listOffersByCompany(username: string): Offer[] {
-  return listOffers().filter((o) => o.empresaUsername.toLowerCase() === username.toLowerCase());
-}
-export function createOffer(o: Omit<Offer, "id" | "creadaEn">): Offer {
-  const all = listOffers();
-  const newO: Offer = { ...o, id: id("offer"), creadaEn: Date.now() };
-  all.push(newO);
-  lsSet(K.offers, all);
-  return newO;
-}
-
-/* =============== Postulaciones =============== */
-export function listApplicationsByStudent(username: string): Application[] {
-  const all = lsGet<Application[]>(K.apps, []);
-  return all
-    .filter((a) => a.estudianteUsername.toLowerCase() === username.toLowerCase())
-    .sort((a, b) => b.creadaEn - a.creadaEn);
-}
-export function listApplicationsByCompany(username: string): Application[] {
-  const all = lsGet<Application[]>(K.apps, []);
-  return all
-    .filter((a) => a.empresaUsername.toLowerCase() === username.toLowerCase())
-    .sort((a, b) => b.creadaEn - a.creadaEn);
-}
-export function getApplication(appId: string): Application | null {
-  const all = lsGet<Application[]>(K.apps, []);
-  return all.find((a) => a.id === appId) ?? null;
-}
-export function applyToOffer(params: { offer: Offer; estudianteUsername: string }): Application {
-  const all = lsGet<Application[]>(K.apps, []);
-  const already = all.find(
-    (a) =>
-      a.offerId === params.offer.id &&
-      a.estudianteUsername.toLowerCase() === params.estudianteUsername.toLowerCase()
+export function getGraduateProfile(username: string): GraduateProfile | null {
+  return (
+    lsGet<GraduateProfile[]>(K.profiles, []).find(
+      (x) => x.username === username
+    ) ?? null
   );
-  if (already) return already;
-
-  const app: Application = {
-    id: id("app"),
-    offerId: params.offer.id,
-    offerTitulo: params.offer.titulo,
-    empresaUsername: params.offer.empresaUsername,
-    estudianteUsername: params.estudianteUsername,
-    estado: "enviada",
-    creadaEn: Date.now(),
-  };
-  all.push(app);
-  lsSet(K.apps, all);
-  return app;
 }
-export function updateApplicationStatus(appId: string, estado: ApplicationStatus) {
-  const all = lsGet<Application[]>(K.apps, []);
-  const i = all.findIndex((a) => a.id === appId);
+
+export function listGraduateProfiles(): GraduateProfile[] {
+  return lsGet<GraduateProfile[]>(K.profiles, []).sort((a, b) =>
+    (a.apellidos ?? "").localeCompare(b.apellidos ?? "")
+  );
+}
+
+/* ================== ENCUESTAS ================== */
+
+export function createSurvey(
+  s: Omit<Survey, "id" | "creadaEn">
+): Survey {
+  const all = lsGet<Survey[]>(K.surveys, []);
+  const newS: Survey = { ...s, id: id("survey"), creadaEn: Date.now() };
+  all.push(newS);
+  lsSet(K.surveys, all);
+  return newS;
+}
+
+export function listSurveys(): Survey[] {
+  return lsGet<Survey[]>(K.surveys, []).sort(
+    (a, b) => b.creadaEn - a.creadaEn
+  );
+}
+
+export function getSurvey(idStr: string): Survey | null {
+  return listSurveys().find((s) => s.id === idStr) ?? null;
+}
+
+export function toggleSurveyActive(idStr: string, active: boolean) {
+  const all = lsGet<Survey[]>(K.surveys, []);
+  const i = all.findIndex((s) => s.id === idStr);
   if (i >= 0) {
-    all[i].estado = estado;
-    lsSet(K.apps, all);
+    all[i].activa = active;
+    lsSet(K.surveys, all);
   }
 }
 
-/* =============== Mensajes =============== */
-export function listMessages(appId: string): Message[] {
-  return lsGet<Message[]>(K.msgs(appId), []).sort((a, b) => a.ts - b.ts);
+/* ========= RESPUESTAS DE ENCUESTAS (EGRESADOS) ========= */
+
+export function listResponsesByUser(username: string): SurveyResponse[] {
+  return lsGet<SurveyResponse[]>(K.responses, []).filter(
+    (r) => r.username === username
+  );
 }
-export function addMessage(appId: string, sender: Role, text: string): Message {
-  const list = listMessages(appId);
-  const m: Message = { id: id("msg"), appId, sender, text, ts: Date.now() };
-  list.push(m);
-  lsSet(K.msgs(appId), list);
-  return m;
+
+export function hasResponded(username: string, surveyId: string): boolean {
+  return listResponsesByUser(username).some(
+    (r) => r.surveyId === surveyId
+  );
+}
+
+export function submitResponse(
+  username: string,
+  survey: Survey,
+  respuestas: string[]
+): SurveyResponse {
+  const all = lsGet<SurveyResponse[]>(K.responses, []);
+  const dup = all.find(
+    (r) => r.username === username && r.surveyId === survey.id
+  );
+  if (dup) return dup;
+
+  const resp: SurveyResponse = {
+    id: id("resp"),
+    surveyId: survey.id,
+    username,
+    respuestas,
+    enviadaEn: Date.now(),
+  };
+  all.push(resp);
+  lsSet(K.responses, all);
+  return resp;
+}
+
+/* ================== EVENTOS ================== */
+
+export function createEvent(
+  e: Omit<AlumniEvent, "id" | "creadaEn">
+): AlumniEvent {
+  const all = lsGet<AlumniEvent[]>(K.events, []);
+  const newE: AlumniEvent = { ...e, id: id("event"), creadaEn: Date.now() };
+  all.push(newE);
+  lsSet(K.events, all);
+  return newE;
+}
+
+export function listEvents(): AlumniEvent[] {
+  return lsGet<AlumniEvent[]>(K.events, []).sort((a, b) =>
+    a.fechaISO.localeCompare(b.fechaISO)
+  );
+}
+
+/* ================== COMUNICADOS ================== */
+
+export function createNotice(
+  n: Omit<Notice, "id" | "creadaEn">
+): Notice {
+  const all = lsGet<Notice[]>(K.notices, []);
+  const newN: Notice = { ...n, id: id("notice"), creadaEn: Date.now() };
+  all.push(newN);
+  lsSet(K.notices, all);
+  return newN;
+}
+
+export function listNotices(): Notice[] {
+  return lsGet<Notice[]>(K.notices, []).sort(
+    (a, b) => b.creadaEn - a.creadaEn
+  );
+}
+
+/* =========== ASISTENCIA A EVENTOS (SEGUIMIENTO) =========== */
+
+export function listAttendanceByEvent(eventId: string): EventAttendance[] {
+  return lsGet<EventAttendance[]>(K.attendance, [])
+    .filter((a) => a.eventId === eventId)
+    .sort((a, b) => a.registradoEn - b.registradoEn);
+}
+
+export function registerAttendance(
+  username: string,
+  eventId: string,
+  estado: AttendanceStatus,
+  comentario?: string
+): EventAttendance {
+  const all = lsGet<EventAttendance[]>(K.attendance, []);
+  const u = (username ?? "").trim().toLowerCase();
+  const idx = all.findIndex(
+    (a) => a.eventId === eventId && a.username === u
+  );
+  const now = Date.now();
+
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], estado, comentario, registradoEn: now };
+    lsSet(K.attendance, all);
+    return all[idx];
+  }
+
+  const rec: EventAttendance = {
+    id: id("att"),
+    eventId,
+    username: u,
+    estado,
+    comentario,
+    registradoEn: now,
+  };
+  all.push(rec);
+  lsSet(K.attendance, all);
+  return rec;
+}
+
+/* =========== MENSAJES / CHAT POR EVENTO =========== */
+
+export function listMessagesByEvent(eventId: string): EventMessage[] {
+  return lsGet<EventMessage[]>(K.messages, [])
+    .filter((m) => m.eventId === eventId)
+    .sort((a, b) => a.enviadaEn - b.enviadaEn);
+}
+
+export function addEventMessage(input: {
+  eventId: string;
+  fromUsername: string;
+  fromRole: Role;
+  cuerpo: string;
+}): EventMessage {
+  const all = lsGet<EventMessage[]>(K.messages, []);
+  const msg: EventMessage = {
+    id: id("msg"),
+    eventId: input.eventId,
+    fromUsername: input.fromUsername,
+    fromRole: input.fromRole,
+    cuerpo: input.cuerpo,
+    enviadaEn: Date.now(),
+  };
+  all.push(msg);
+  lsSet(K.messages, all);
+  return msg;
 }

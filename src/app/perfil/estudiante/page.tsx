@@ -1,141 +1,173 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Protected from "@/components/Protected";
-import { getAuth } from "@/lib/auth";
-import { getStudentProfile, saveStudentProfile } from "@/lib/db";
-import type { StudentProfile } from "@/lib/types";
 import BackButton from "@/components/BackButton";
+import { getAuth } from "@/lib/auth";
+import { getGraduateProfile, upsertGraduateProfile } from "@/lib/db";
+import type { GraduateProfile, JobRecord } from "@/lib/types";
 
-type StudentProfileDraft = Omit<StudentProfile, "habilidades" | "intereses"> & {
-  habilidades?: string[] | string;
-  intereses?: string[] | string;
-};
-
-export default function PerfilEstudiantePage() {
-  const [authUser, setAuthUser] = useState<string>("");
-  const [saved, setSaved] = useState(false);
-  const [form, setForm] = useState<StudentProfileDraft>({
-    username: "",
-    nombres: "",
-    apellidos: "",
-    email: "",
-    telefono: "",
-    educacion: "",
-    habilidades: "",
-    disponibilidad: "",
-    intereses: "",
-  });
+export default function PerfilEgresadoPage() {
+  const [p, setP] = useState<GraduateProfile | null>(null);
 
   useEffect(() => {
-    const auth = getAuth();
-    if (auth) {
-      setAuthUser(auth.username);
-      const p = getStudentProfile(auth.username);
-      if (p) setForm({ ...p, habilidades: toCSVDisplay(p.habilidades), intereses: toCSVDisplay(p.intereses) });
-      else setForm((f) => ({ ...f, username: auth.username, email: `${auth.username}` }));
-    }
+    const a = getAuth();
+    if (!a) return;
+    const existing = getGraduateProfile(a.username) ?? {
+      username: a.username,
+      empleoActual: null,
+    };
+    setP(existing);
   }, []);
 
-  function update<K extends keyof StudentProfileDraft>(k: K, v: StudentProfileDraft[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
+  const completeness = useMemo(() => {
+    if (!p) return 0;
+    const fields = [
+      p.nombres, p.apellidos, p.emailInstitucional, p.emailPersonal,
+      p.carrera, p.anioEgreso, p.telefono
+    ];
+    const filled = fields.filter((x)=>x!==undefined && x!==null && `${x}`.trim()!=="").length;
+    return Math.round((filled / fields.length) * 100);
+  }, [p]);
+
+  function parseCSV(v: string): string[] {
+    return (v || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
   }
 
-  function onSubmit(e: React.FormEvent) {
+  function onSave(e: React.FormEvent) {
     e.preventDefault();
-    const payload: StudentProfile = {
-      username: form.username,
-      nombres: form.nombres,
-      apellidos: form.apellidos,
-      email: form.email,
-      telefono: form.telefono,
-      educacion: form.educacion,
-      disponibilidad: form.disponibilidad,
-      habilidades: splitCSV(form.habilidades),
-      intereses: splitCSV(form.intereses),
-    };
-    saveStudentProfile(payload);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+    if (!p) return;
+    upsertGraduateProfile(p);
+    alert("Perfil actualizado ✔");
   }
 
   return (
-    <Protected allowedRoles={["estudiante"]}>
+    <Protected allowedRoles={["egresado"]}>
       <main className="mx-auto max-w-3xl p-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-4">
           <BackButton />
-          <span className="text-xs text-[var(--muted)]">Completa todos los campos marcados.</span>
         </div>
 
-        <section className="animate-fade rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5">
-          <h1 className="text-2xl font-bold">Perfil de Estudiante</h1>
+        <header className="mb-4">
+          <h1 className="m-0 text-2xl font-extrabold">Mi perfil</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Tu perfil ayuda a las empresas a entender tu preparación, áreas de interés y disponibilidad.
+            Completa tu información para mejorar el seguimiento y acceso a oportunidades.
           </p>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--line)]/50">
+            <div className="h-2 bg-[var(--accent)]" style={{ width: `${completeness}%` }} />
+          </div>
+          <div className="mt-1 text-xs text-[var(--muted)]">Completitud: {completeness}%</div>
+        </header>
 
-          <form onSubmit={onSubmit} className="mt-5 grid gap-4">
-            <Two>
-              <Text id="nombres" label="Nombres" value={form.nombres} onChange={(v) => update("nombres", v)} />
-              <Text id="apellidos" label="Apellidos" value={form.apellidos} onChange={(v) => update("apellidos", v)} />
-            </Two>
+        {!p ? (
+          <div className="rounded-2xl border border-[var(--line)] p-4 text-sm text-[var(--muted)]">Cargando…</div>
+        ) : (
+          <form onSubmit={onSave} className="grid gap-5">
+            {/* Datos personales */}
+            <section className="rounded-2xl border border-[var(--line)] p-4">
+              <div className="text-base font-semibold">Datos personales</div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Input label="Nombres" value={p.nombres ?? ""} onChange={v=>setP({...p, nombres:v})} />
+                <Input label="Apellidos" value={p.apellidos ?? ""} onChange={v=>setP({...p, apellidos:v})} />
+                <Input label="DNI" value={p.dni ?? ""} onChange={v=>setP({...p, dni:v})} />
+                <Input label="Teléfono" value={p.telefono ?? ""} onChange={v=>setP({...p, telefono:v})} />
+                <Input label="Email institucional" value={p.emailInstitucional ?? ""} onChange={v=>setP({...p, emailInstitucional:v})} />
+                <Input label="Email personal" value={p.emailPersonal ?? ""} onChange={v=>setP({...p, emailPersonal:v})} />
+                <Input label="Carrera" value={p.carrera ?? ""} onChange={v=>setP({...p, carrera:v})} />
+                <NumberInput label="Año de egreso" value={p.anioEgreso ?? 0} onChange={v=>setP({...p, anioEgreso:v})} />
+                <Input label="Dirección" value={p.direccion ?? ""} onChange={v=>setP({...p, direccion:v})} />
+                <Input label="LinkedIn" value={p.linkedin ?? ""} onChange={v=>setP({...p, linkedin:v})} />
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3">
+                <Input label="Skills (separa con comas)" value={(p.skills ?? []).join(", ")} onChange={v=>setP({...p, skills: parseCSV(v)})} />
+                <Input label="Intereses (separa con comas)" value={(p.intereses ?? []).join(", ")} onChange={v=>setP({...p, intereses: parseCSV(v)})} />
+              </div>
+            </section>
 
-            <Two>
-              <Text id="email" label="Email" value={form.email} onChange={(v) => update("email", v)} />
-              <Text id="telefono" label="Teléfono" value={form.telefono || ""} onChange={(v) => update("telefono", v)} />
-            </Two>
+            {/* Empleo actual */}
+            <section className="rounded-2xl border border-[var(--line)] p-4">
+              <div className="text-base font-semibold">Empleo actual</div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Input label="Empresa" value={p.empleoActual?.empresa ?? ""} onChange={v=>setJob(p, setP, { empresa:v })} />
+                <Input label="Cargo" value={p.empleoActual?.cargo ?? ""} onChange={v=>setJob(p, setP, { cargo:v })} />
+                <Input label="Ciudad" value={p.empleoActual?.ciudad ?? ""} onChange={v=>setJob(p, setP, { ciudad:v })} />
+                <Input label="País" value={p.empleoActual?.pais ?? ""} onChange={v=>setJob(p, setP, { pais:v })} />
+                <Select
+                  label="Modalidad"
+                  value={p.empleoActual?.modalidad ?? ""}
+                  onChange={v=>setJob(p, setP, { modalidad: (v as JobRecord["modalidad"]) })}
+                  options={[
+                    { value: "", label: "—" },
+                    { value: "practicas", label: "Prácticas" },
+                    { value: "junior", label: "Junior" },
+                    { value: "full-time", label: "Full-time" },
+                    { value: "part-time", label: "Part-time" },
+                  ]}
+                />
+              </div>
+            </section>
 
-            <TextArea id="educacion" label="Educación (resumen)" value={form.educacion || ""} onChange={(v) => update("educacion", v)} />
-
-            <Two>
-              <Text id="disponibilidad" label="Disponibilidad (full-time/part-time)" value={form.disponibilidad || ""} onChange={(v) => update("disponibilidad", v)} />
-              <Text id="habilidades" label="Habilidades (separadas por coma)" value={toCSVDisplay(form.habilidades)} onChange={(v) => update("habilidades", v)} />
-            </Two>
-
-            <Text id="intereses" label="Intereses (separados por coma)" value={toCSVDisplay(form.intereses)} onChange={(v) => update("intereses", v)} />
-
-            <div className="flex items-center gap-2">
-              <button className="rounded-xl bg-[var(--accent)] px-4 py-2 font-semibold text-white transition hover:brightness-105" type="submit">Guardar</button>
-              {saved && <span className="animate-fade text-sm text-emerald-400">Guardado ✓</span>}
-              <span className="ml-auto text-xs text-[var(--muted)]">Usuario: {authUser}</span>
+            <div className="flex justify-end">
+              <button className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--accent)] px-5 font-semibold text-white hover:brightness-105">
+                Guardar cambios
+              </button>
             </div>
           </form>
-        </section>
+        )}
       </main>
     </Protected>
   );
 }
 
-/* Helpers CSV robustos */
-function splitCSV(v: unknown): string[] {
-  if (Array.isArray(v)) return v.map(String).map(sane);
-  return String(v ?? "").split(",").map(sane).filter(Boolean);
+function setJob(
+  p: GraduateProfile,
+  setP: (p: GraduateProfile) => void,
+  patch: Partial<JobRecord>
+) {
+  const next: GraduateProfile = { ...p, empleoActual: { ...(p.empleoActual ?? { empresa:"", cargo:"" }), ...patch } };
+  setP(next);
 }
-function toCSVDisplay(v: unknown): string {
-  if (Array.isArray(v)) return v.map(String).map(sane).join(", ");
-  if (typeof v === "string") return v;
-  return "";
-}
-function sane(s: string){ return s.trim(); }
 
-/* UI bits */
-function Two({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
-}
-function Text(props:{ id:string; label:string; value:string; onChange:(v:string)=>void }) {
+function Input({ label, value, onChange }: { label: string; value: string; onChange: (v: string)=>void }) {
   return (
-    <div>
-      <label htmlFor={props.id} className="mb-1 block text-xs text-[var(--muted)]">{props.label}</label>
-      <input id={props.id} value={props.value} onChange={(e)=>props.onChange(e.target.value)}
-        className="w-full rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[color:rgba(99,102,241,0.15)]" />
-    </div>
+    <label className="grid gap-1 text-xs">
+      <span className="text-[var(--muted)]">{label}</span>
+      <input
+        className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[color:rgba(14,165,163,0.18)]"
+        value={value} onChange={e=>onChange(e.target.value)}
+      />
+    </label>
   );
 }
-function TextArea(props:{ id:string; label:string; value:string; onChange:(v:string)=>void }) {
+function NumberInput({ label, value, onChange }: { label: string; value: number; onChange: (v:number)=>void }) {
   return (
-    <div>
-      <label htmlFor={props.id} className="mb-1 block text-xs text-[var(--muted)]">{props.label}</label>
-      <textarea id={props.id} value={props.value} onChange={(e)=>props.onChange(e.target.value)} rows={4}
-        className="w-full rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[color:rgba(99,102,241,0.15)]" />
-    </div>
+    <label className="grid gap-1 text-xs">
+      <span className="text-[var(--muted)]">{label}</span>
+      <input
+        type="number" min={1900} max={2100}
+        className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[color:rgba(14,165,163,0.18)]"
+        value={value || 0} onChange={e=>onChange(Number(e.target.value))}
+      />
+    </label>
+  );
+}
+function Select({
+  label, value, onChange, options,
+}: {
+  label: string; value: string; onChange: (v:string)=>void; options: {value:string; label:string}[];
+}) {
+  return (
+    <label className="grid gap-1 text-xs">
+      <span className="text-[var(--muted)]">{label}</span>
+      <select
+        value={value} onChange={e=>onChange(e.target.value)}
+        className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[color:rgba(14,165,163,0.18)]"
+      >
+        {options.map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
   );
 }

@@ -1,60 +1,94 @@
-export type Role = "empresa" | "estudiante";
+export type Role = "egresado" | "coordinador";
 
 export interface AuthData {
-  username: string; // como lo tecleó el usuario
+  username: string;
   role: Role;
-  ts: number;
+  ts: number; // epoch ms
 }
 
-/* Perfiles */
-export interface StudentProfile {
-  username: string;
-  nombres: string;
-  apellidos: string;
-  email: string;
+/** PERFIL DEL EGRESADO */
+export interface GraduateProfile {
+  username: string;          // = auth.username
+  dni?: string;
+  nombres?: string;
+  apellidos?: string;
+  emailInstitucional?: string;
+  emailPersonal?: string;
   telefono?: string;
-  educacion?: string;
-  habilidades?: string[];
-  disponibilidad?: string;
+  carrera?: string;
+  anioEgreso?: number;
+  direccion?: string;
+  linkedin?: string;
+  skills?: string[];
   intereses?: string[];
+  empleoActual?: JobRecord | null;
 }
 
-export interface CompanyProfile {
-  username: string;
-  nombreEmpresa: string;
-  ruc?: string;
-  email: string;
-  telefono?: string;
-  descripcion?: string;
+export interface JobRecord {
+  empresa: string;
+  cargo: string;
+  sector?: string;
+  modalidad?: "practicas" | "junior" | "full-time" | "part-time";
+  ciudad?: string;
+  pais?: string;
+  desde?: number; // epoch ms
 }
 
-/* Ofertas y postulaciones */
-export interface Offer {
+/** ENCUESTAS */
+export interface Survey {
   id: string;
   titulo: string;
-  descripcion: string;
-  modalidad: "practicas" | "junior" | "part-time" | "full-time";
-  empresaUsername: string;
+  preguntas: string[];
+  activa: boolean;
   creadaEn: number;
 }
 
-export type ApplicationStatus = "enviada" | "en revisión" | "entrevista" | "rechazada" | "aceptada";
-
-export interface Application {
+export interface SurveyResponse {
   id: string;
-  offerId: string;
-  offerTitulo: string;
-  empresaUsername: string;
-  estudianteUsername: string;
-  estado: ApplicationStatus;
+  surveyId: string;
+  username: string;      // egresado
+  respuestas: string[];  // 1:1 con preguntas
+  enviadaEn: number;
+}
+
+/** EVENTOS */
+export interface AlumniEvent {
+  id: string;
+  titulo: string;
+  fechaISO: string; // YYYY-MM-DD
+  modalidad: "virtual" | "presencial";
+  link?: string;
+  lugar?: string;
+  descripcion?: string;
   creadaEn: number;
 }
 
-/* Mensajes por solicitud */
-export interface Message {
+/** ESTADO ASISTENCIA EVENTOS */
+export type AttendanceStatus = "si" | "no" | "talvez";
+
+export interface EventAttendance {
   id: string;
-  appId: string;
-  sender: Role;
-  text: string;
-  ts: number;
+  eventId: string;
+  username: string;
+  estado: AttendanceStatus;
+  comentario?: string;
+  registradoEn: number;
+}
+
+/** MENSAJES (CHAT) POR EVENTO */
+export interface EventMessage {
+  id: string;
+  eventId: string;
+  fromUsername: string;
+  fromRole: Role;
+  cuerpo: string;
+  enviadaEn: number;
+}
+
+/** COMUNICADOS */
+export interface Notice {
+  id: string;
+  titulo: string;
+  cuerpo: string;
+  creadaEn: number;
 }

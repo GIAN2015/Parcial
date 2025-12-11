@@ -3,85 +3,110 @@
 import type { AuthData, Role } from "./types";
 
 const KEY = "auth";
-const TTL_MS = 12 * 60 * 60 * 1000; // 12 h
+const TTL_MS = 12 * 60 * 60 * 1000; // 12h
 
 type UsersMap = Record<string, { password: string; role: Role }>;
 
-const USERS_RAW: UsersMap = {
-  // Estudiantes
-  EP: { password: "12345", role: "estudiante" },
-  "ep@uni.pe": { password: "12345", role: "estudiante" },
-  a20230001: { password: "12345", role: "estudiante" },
-
-  // Empresas
-  "emp-admin": { password: "12345", role: "empresa" },
-  "hr@company.pe": { password: "12345", role: "empresa" },
+const BASE_USERS: UsersMap = {
+  // Egresados demo
+  "egresado1": { password: "12345", role: "egresado" },
+  "egresada.ana": { password: "12345", role: "egresado" },
+  // Coordinación UNTELS
+  "coord": { password: "12345", role: "coordinador" },
 };
 
-const USERS: UsersMap = Object.fromEntries(
-  Object.entries(USERS_RAW).map(([k, v]) => [k.toLowerCase(), v])
-);
+const USERS_KEY = "auth_users_v1";
 
-function normalize(u: string) {
-  return (u ?? "").trim().toLowerCase();
+function norm(u: string) { return (u ?? "").trim().toLowerCase(); }
+
+function loadUsers(): UsersMap {
+  if (typeof window === "undefined") {
+    return { ...BASE_USERS };
+  }
+  try {
+    const raw = window.localStorage.getItem(USERS_KEY);
+    if (!raw) return { ...BASE_USERS };
+    const parsed = JSON.parse(raw) as UsersMap;
+    return { ...BASE_USERS, ...parsed };
+  } catch {
+    return { ...BASE_USERS };
+  }
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+function saveUsers(users: UsersMap) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
-function isRole(x: unknown): x is Role {
-  return x === "empresa" || x === "estudiante";
-}
-
-function isValidAuth(a: unknown): a is AuthData {
-  if (!isRecord(a)) return false;
-  const { username, role, ts } = a;
-  if (typeof username !== "string") return false;
-  if (!isRole(role)) return false;
-  if (typeof ts !== "number" || !Number.isFinite(ts)) return false;
-  return Date.now() - ts < TTL_MS;
-}
-
-/* UI hint del rol */
+/** Solo para mostrar “entrarás como coordinador/egresado” según el usuario escrito */
 export function peekRole(username: string): Role | null {
-  const u = normalize(username);
-  const fromUsers = USERS[u]?.role ?? null;
-  if (fromUsers) return fromUsers;
+  const u = norm(username);
   if (!u) return null;
-  if (u.startsWith("emp-") || u.includes("@company") || u.includes("@corp")) return "empresa";
-  return "estudiante";
+  if (u.includes("coord") || u.includes("admin")) return "coordinador";
+  return "egresado";
 }
 
+/** LOGIN */
 export function login(input: { username: string; password: string }) {
   if (typeof window === "undefined") return { ok: false as const };
-  const typed = (input.username ?? "").trim();
-  const u = normalize(typed);
+
+  const u = norm(input.username);
   const p = input.password ?? "";
+  const users = loadUsers();
+  const found = users[u];
 
-  if (!u || !p) return { ok: false as const, error: "Completa email/usuario y contraseña." };
-
-  const found = USERS[u];
   if (found && found.password === p) {
-    const auth: AuthData = { username: typed, role: found.role, ts: Date.now() };
-    localStorage.setItem(KEY, JSON.stringify(auth));
+    const data: AuthData = { username: u, role: found.role, ts: Date.now() };
+    window.localStorage.setItem(KEY, JSON.stringify(data));
     return { ok: true as const };
   }
-  return { ok: false as const, error: "Credenciales inválidas." };
+
+  return { ok: false as const, error: "Usuario o contraseña incorrectos." };
 }
 
-export function logout() {
-  if (typeof window !== "undefined") localStorage.removeItem(KEY);
+/** SOLO COORDINADOR: crear cuentas de egresados */
+export function createUserAccount(
+  username: string,
+  password: string,
+  role: Role = "egresado"
+): { ok: true } | { ok: false; error?: string } {
+  if (typeof window === "undefined") {
+    return { ok: false, error: "Solo disponible en el navegador." };
+  }
+
+  const u = norm(username);
+  if (!u || !password) {
+    return { ok: false, error: "Usuario y contraseña son obligatorios." };
+  }
+
+  const users = loadUsers();
+  if (users[u]) {
+    return { ok: false, error: "Ya existe un usuario con ese nombre." };
+  }
+
+  users[u] = { password, role };
+  saveUsers(users);
+
+  return { ok: true };
 }
 
+/** LEER SESIÓN */
 export function getAuth(): AuthData | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (isValidAuth(raw)) return raw;
-    localStorage.removeItem(KEY);
-    return null;
+    const raw = window.localStorage.getItem(KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as AuthData;
+    if (!data?.username || !data?.role || typeof data.ts !== "number") return null;
+    if (Date.now() - data.ts > TTL_MS) { logout(); return null; }
+    return data;
   } catch {
     return null;
   }
+}
+
+/** LOGOUT */
+export function logout() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(KEY);
 }
