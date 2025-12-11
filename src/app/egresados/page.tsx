@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Protected from "@/components/Protected";
 import BackButton from "@/components/BackButton";
 import { listGraduateProfiles, upsertGraduateProfile } from "@/lib/db";
@@ -36,13 +36,19 @@ export default function EgresadosPage() {
     const s = q.trim().toLowerCase();
     if (!s) return list;
     return list.filter((p) =>
-      [p.nombres, p.apellidos, p.carrera, p.empleoActual?.empresa, p.empleoActual?.cargo]
+      [
+        p.nombres,
+        p.apellidos,
+        p.carrera,
+        p.empleoActual?.empresa,
+        p.empleoActual?.cargo,
+      ]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(s))
     );
   }, [list, q]);
 
-  function handleCreate(e: any) {
+  function handleCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFeedback("");
 
@@ -92,7 +98,8 @@ export default function EgresadosPage() {
         <section className="mb-6 rounded-2xl border border-[var(--line)] p-4">
           <div className="text-base font-semibold">Registrar nuevo egresado</div>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            Solo el coordinador puede crear usuarios de egresados. Esto genera la cuenta de acceso y un perfil base.
+            Solo el coordinador puede crear usuarios de egresados. Esto genera la
+            cuenta de acceso y un perfil base.
           </p>
           <form
             onSubmit={handleCreate}

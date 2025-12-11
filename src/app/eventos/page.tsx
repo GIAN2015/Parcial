@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Protected from "@/components/Protected";
 import BackButton from "@/components/BackButton";
 import { getAuth } from "@/lib/auth";
@@ -60,9 +60,10 @@ export default function EventosPage() {
 
   const isCoord = auth?.role === "coordinador";
 
-  function create(e: any) {
+  function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!titulo || !fechaISO) return;
+
     const ev = createEvent({
       titulo,
       fechaISO,
@@ -71,11 +72,13 @@ export default function EventosPage() {
       lugar: lugar || undefined,
       descripcion: descripcion || undefined,
     });
+
     setTitulo("");
     setFechaISO("");
     setLink("");
     setLugar("");
     setDescripcion("");
+
     setEvents((prev) => [...prev, ev]);
     setAttendance((prev) => ({ ...prev, [ev.id]: [] }));
     setMessages((prev) => ({ ...prev, [ev.id]: [] }));
@@ -183,7 +186,9 @@ export default function EventosPage() {
             const msgList = messages[e.id] ?? [];
             const myAtt =
               auth &&
-              attList.find((a) => a.username === auth.username.toLowerCase());
+              attList.find(
+                (a) => a.username === auth.username.toLowerCase()
+              );
             const countSi = attList.filter((a) => a.estado === "si").length;
             const countNo = attList.filter((a) => a.estado === "no").length;
             const countTalvez = attList.filter(
@@ -276,9 +281,7 @@ export default function EventosPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setOpenEventId(
-                        openEventId === e.id ? null : e.id
-                      )
+                      setOpenEventId(openEventId === e.id ? null : e.id)
                     }
                     className="text-xs text-[var(--accent)] underline"
                   >
@@ -309,9 +312,7 @@ export default function EventosPage() {
                               {m.fromUsername} · {m.fromRole}
                             </span>
                             <span className="text-[var(--muted)]">
-                              {new Date(
-                                m.enviadaEn
-                              ).toLocaleString()}
+                              {new Date(m.enviadaEn).toLocaleString()}
                             </span>
                           </div>
                           <div className="mt-1 text-[0.75rem]">
